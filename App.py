@@ -167,27 +167,31 @@ with gzip.open("similarity.pkl.gz", "rb") as f:
 
 selected_movie_name = st.selectbox(
     "Tell me the Name and I will Recommend You Similar five movies",
-    movies['title'].values
+    movies['title'].values,
+    index=None,
+    placeholder="Search for a movie..."
 )
-names, posters, trailers, ratings, overviews = recommend(selected_movie_name)
-st.subheader("🎥 Selected Movie")
 
-col1, col2 = st.columns([1,2])
+if selected_movie_name:
+    names, posters, trailers, ratings, overviews = recommend(selected_movie_name)
 
+    st.subheader("🎥 Selected Movie")
 
-selected_idx = movies[movies['title'] == selected_movie_name].index[0]
-selected_movie_id = movies.iloc[selected_idx].movie_id
+    col1, col2 = st.columns([1,2])
 
-poster_url, rating, overview = get_movie_details(selected_movie_name)
+    selected_idx = movies[movies['title'] == selected_movie_name].index[0]
+    selected_movie_id = movies.iloc[selected_idx].movie_id
 
-with col1:
-    st.image(poster_url, width=220)
+    poster_url, rating, overview = get_movie_details(selected_movie_name)
 
-with col2:
-    st.markdown(f"## {selected_movie_name}")
-    st.write(f"⭐ **Rating:** {rating}/10")
-    st.write("**Summary**")
-    st.write(overview)
+    with col1:
+        st.image(poster_url, width=220)
+
+    with col2:
+        st.markdown(f"## {selected_movie_name}")
+        st.write(f"⭐ **Rating:** {rating}/10")
+        st.write("**Summary**")
+        st.write(overview)
 page_bg = """
 <style>
 [data-testid="stAppViewContainer"]{
@@ -227,8 +231,7 @@ transition:0.3s;
 </style>
 """, unsafe_allow_html=True)
 
-
-if st.button("🎬 Recommend"):
+if st.button("🎬 Recommend") and selected_movie_name:
 
     progress_text = "🍿 Finding the best movies for you..."
     progress = st.progress(0, text=progress_text)
