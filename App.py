@@ -7,15 +7,12 @@ import pandas as pd
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-
 session = requests.Session()
-
 retry = Retry(
     total=5,
     backoff_factor=1,
     status_forcelist=[429, 500, 502, 503, 504]
 )
-
 adapter = HTTPAdapter(max_retries=retry)
 
 session.mount("https://", adapter)
@@ -25,114 +22,6 @@ API_KEY = "c68b3ea5107251e1067add4122fd29cb"
 HEADERS = {
     "User-Agent": "Mozilla/5.0"
 }
-OFFLINE_POSTERS = {
-    "action": "offline_posters/action.jpg",
-    "adventure": "offline_posters/adventure.jpg",
-    "comedy": "offline_posters/comedy.jpg",
-
-
-    "history": "offline_posters/history.jpg",
-    "horror": "offline_posters/horror.jpg",
-    "batman": "offline_posters/batman.jpg",
-    "science fiction": "offline_posters/scifi.jpg",
-    "default": "offline_posters/default.jpg",
-    "western": "offline_posters/western.jpg",
-
-}
-
-
-def search_poster_by_title(movie_title):
-    try:
-        headers = HEADERS
-
-        response = session.get(
-            "https://api.themoviedb.org/3/search/movie",
-            params={
-                "api_key": API_KEY,
-                "query": movie_title
-            },
-            headers=headers,
-            timeout=10
-        )
-
-        data = response.json()
-
-        if data.get("results") and len(data["results"]) > 0:
-            poster_path = data["results"][0].get("poster_path")
-
-            if poster_path:
-                return f"https://image.tmdb.org/t/p/w500{poster_path}"
-
-    except Exception as e:
-        print(f"Title search failed for {movie_title}: {e}")
-
-    return "https://via.placeholder.com/500x750?text=No+Poster"
-def get_offline_poster(movie_title):
-
-    try:
-        movie_row = movies[movies["title"] == movie_title]
-
-        if movie_row.empty:
-            return OFFLINE_POSTERS["default"]
-
-        tags = str(movie_row.iloc[0]["tags"]).lower()
-
-        for key in OFFLINE_POSTERS:
-            if key != "default" and key in tags:
-                return OFFLINE_POSTERS[key]
-
-    except:
-        pass
-
-    return OFFLINE_POSTERS["default"]
-
-def fetch_poster(movie_id, movie_title):
-    try:
-        headers = HEADERS
-
-        response = session.get(
-            f"https://api.themoviedb.org/3/movie/{movie_id}",
-            params={"api_key": API_KEY},
-            headers=headers,
-            timeout=10
-        )
-
-        data = response.json()
-        print("=" * 50)
-        print("Movie:", movie_title)
-        print("Movie ID:", movie_id)
-        print("Status Code:", response.status_code)
-        print(data)
-
-
-        print("Movie:", movie_title)
-        print("Movie ID:", movie_id)
-
-        poster_path = data.get("poster_path")
-
-        if poster_path:
-            poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}"
-            print("Poster URL:", poster_url)
-            return poster_url
-
-        print("No poster found from movie ID, trying title search...")
-
-        poster = search_poster_by_title(movie_title)
-
-        if "via.placeholder.com" in poster:
-            return get_offline_poster(movie_title)
-
-        return poster
-
-    except Exception as e:
-        print(f"Poster fetch failed for {movie_title}: {e}")
-
-        poster = search_poster_by_title(movie_title)
-
-        if "via.placeholder.com" in poster:
-            return get_offline_poster(movie_title)
-
-        return poster
 def fetch_trailer(movie_id):
     try:
         response = session.get(
@@ -168,6 +57,8 @@ def recommend(movie):
     recommended_movies = []
     recommended_movies_posters = []
     recommended_trailers = []
+    recommended_overviews = []
+    recommended_ratings = []
 
     for item in movies_list:
         idx = item[0]
@@ -176,30 +67,34 @@ def recommend(movie):
         movie_title = movies.iloc[idx].title
 
         recommended_movies.append(movie_title)
+        poster, rating, overview = get_movie_details(movie_title)
 
-        # Fetch poster
-        poster = fetch_poster(movie_id, movie_title)
         recommended_movies_posters.append(poster)
+        recommended_ratings.append(rating)
+        recommended_overviews.append(overview)
 
-        # Fetch trailer
+
         trailer = fetch_trailer(movie_id)
         recommended_trailers.append(trailer)
 
-        # Small delay to avoid connection reset
         time.sleep(0.3)
 
-    return recommended_movies, recommended_movies_posters, recommended_trailers
+    return (
+        recommended_movies,
+        recommended_movies_posters,
+        recommended_trailers,
+        recommended_ratings,
+        recommended_overviews
+    )
 def get_movie_details(movie_title):
     try:
-        headers = HEADERS
-
         response = session.get(
             "https://api.themoviedb.org/3/search/movie",
             params={
                 "api_key": API_KEY,
                 "query": movie_title
             },
-            headers=headers,
+            headers=HEADERS,
             timeout=10
         )
 
@@ -210,18 +105,27 @@ def get_movie_details(movie_title):
 
             poster_path = movie.get("poster_path")
             rating = movie.get("vote_average", "N/A")
+            overview = movie.get("overview", "No description available.")
+
+
+            if len(overview) > 250:
+                overview = overview[:250] + "..."
 
             if poster_path:
                 poster_url = f"https://image.tmdb.org/t/p/w500{poster_path}"
             else:
                 poster_url = "https://via.placeholder.com/220x330?text=No+Poster"
 
-            return poster_url, rating
+            return poster_url, rating, overview
 
     except Exception:
         pass
 
-    return "https://via.placeholder.com/220x330?text=No+Poster", "N/A"
+    return (
+        "https://via.placeholder.com/220x330?text=No+Poster",
+        "N/A",
+        "No description available."
+    )
 st.set_page_config(
     page_title="Movie Recommender",
     page_icon="🎬",
@@ -253,7 +157,7 @@ Find movies you'll love in seconds!
 """, unsafe_allow_html=True)
 
 
-# Load data
+
 movies_dict = pickle.load(open('movie_dict.pkl', 'rb'))
 movies = pd.DataFrame(movies_dict)
 import gzip
@@ -265,10 +169,25 @@ selected_movie_name = st.selectbox(
     "Tell me the Name and I will Recommend You Similar five movies",
     movies['title'].values
 )
+names, posters, trailers, ratings, overviews = recommend(selected_movie_name)
+st.subheader("🎥 Selected Movie")
 
-poster_url, rating = get_movie_details(selected_movie_name)
+col1, col2 = st.columns([1,2])
 
 
+selected_idx = movies[movies['title'] == selected_movie_name].index[0]
+selected_movie_id = movies.iloc[selected_idx].movie_id
+
+poster_url, rating, overview = get_movie_details(selected_movie_name)
+
+with col1:
+    st.image(poster_url, width=220)
+
+with col2:
+    st.markdown(f"## {selected_movie_name}")
+    st.write(f"⭐ **Rating:** {rating}/10")
+    st.write("**Summary**")
+    st.write(overview)
 page_bg = """
 <style>
 [data-testid="stAppViewContainer"]{
@@ -309,24 +228,45 @@ transition:0.3s;
 """, unsafe_allow_html=True)
 
 
-if st.button("Recommend"):
-    names, posters, trailers = recommend(selected_movie_name)
+if st.button("🎬 Recommend"):
+
+    progress_text = "🍿 Finding the best movies for you..."
+    progress = st.progress(0, text=progress_text)
+
+    for percent in range(101):
+        time.sleep(0.01)
+        progress.progress(percent, text=progress_text)
+
+    names, posters, trailers, ratings, overviews = recommend(selected_movie_name)
+
+    progress.empty()
+
+    st.success("✅ Recommendations Ready!")
 
     cols = st.columns(5)
-
     for i in range(5):
         with cols[i]:
-            st.text(names[i])
+
+            st.markdown(f"### {names[i]}")
 
             try:
+                st.image(posters[i], width=170)
 
-                st.image(posters[i], width=150)
+                st.write(f"⭐ **{ratings[i]}/10**")
+
+                st.caption(overviews[i])
+
                 if trailers[i]:
                     st.link_button("▶ Watch Trailer", trailers[i])
-            except:
+
+            except Exception:
                 st.image(
-                    "https://via.placeholder.com/500x750?text=No+Poster",
-                    width=150
+                    "https://via.placeholder.com/220x330?text=No+Poster",
+                    width=170
                 )
+
+                st.write("⭐ N/A")
+                st.caption("No summary available.")
+
             if trailers[i]:
                 st.video(trailers[i])
